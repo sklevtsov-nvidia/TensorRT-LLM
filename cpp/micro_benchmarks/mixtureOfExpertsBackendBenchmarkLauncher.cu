@@ -451,6 +451,7 @@ void argGenLoadFile(benchmark::internal::Benchmark* benchmark)
         int ep_size = get_or("ep_size", 1);
         int world_rank = get_or("world_rank", 0);
         int bias = get_or("bias", 0);
+        int fused_finalize = get_or("fused_finalize", 1);
         int do_final_scale = get_or("do_final_scale", 1); // Default to scales on
         int gemm_to_profile = get_or("gemm_to_profile", (int) GemmToProfile::LAYER);
         TLLM_CHECK_WITH_INFO(world_rank < tp_size * ep_size, "Rank is out of bounds of tp*ep");
@@ -508,7 +509,7 @@ void argGenLoadFile(benchmark::internal::Benchmark* benchmark)
                     get_range("inter_size"),                                //
                     tp_size, ep_size, world_rank,                           //
                     get_range("num_tokens"),                                //
-                    bias, do_final_scale,                                   //
+                    bias, fused_finalize, do_final_scale,                   //
                     get_range("act_fn", 0, (int) ActivationType::Identity), //
                     t1,                                                     //
                     t2,                                                     //
@@ -527,6 +528,7 @@ void argGenHardcoded(benchmark::internal::Benchmark* benchmark)
     auto inter_size_mul = {4.f};               // {7.f/2.f, 4.f};
     auto num_tokens = {2048};                  // {1, 20, 200, 2048};
     auto use_bias = {0};                       // {0, 1};
+    auto use_fused_finalize = {1};             // {0, 1};
     auto activation_type = {ActivationType::Gelu};
     // {ActivationType::Relu, ActivationType::Gelu,
     // ActivationType::Silu, ActivationType::Geglu,
@@ -543,13 +545,14 @@ void argGenHardcoded(benchmark::internal::Benchmark* benchmark)
                         auto inter_size = static_cast<int>(size * inter_mul);
                         for (auto tokens : num_tokens)
                             for (auto bias : use_bias)
-                                for (auto act : activation_type)
-                                    for (auto tactic1 : cutlass_tactic)
-                                        for (auto tactic2 : cutlass_tactic)
-                                            for (auto routing : routing_config)
-                                                benchmark->Args({num_expert, k, size, inter_size, 1, 1, 0, tokens, bias,
-                                                    1, (int) act, tactic1, tactic2, routing,
-                                                    (int) GemmToProfile::LAYER});
+                                for (auto fused_finalize : use_fused_finalize)
+                                    for (auto act : activation_type)
+                                        for (auto tactic1 : cutlass_tactic)
+                                            for (auto tactic2 : cutlass_tactic)
+                                                for (auto routing : routing_config)
+                                                    benchmark->Args({num_expert, k, size, inter_size, 1, 1, 0, tokens, bias,
+                                                        fused_finalize, 1, (int) act, tactic1, tactic2, routing,
+                                                        (int) GemmToProfile::LAYER});
                     }
 }
 
@@ -573,7 +576,7 @@ void argGen(benchmark::internal::Benchmark* benchmark)
     benchmark->UseManualTime();
     benchmark->ArgNames(
         {"Num Experts", "K", "Hidden Size", "Inter Size", "TP Size", "EP Size", "World Rank", "Num Tokens", "Use Bias",
-            "Use Final Scale", "Activation Function", "Tactic ID 1", "Tactic ID 2", "Routing ID", "Gemm To Profile"});
+            "Fused Finalize", "Use Final Scale", "Activation Function", "Tactic ID 1", "Tactic ID 2", "Routing ID", "Gemm To Profile"});
 
     if (workloadFile)
         argGenLoadFile<BenchClass>(benchmark);

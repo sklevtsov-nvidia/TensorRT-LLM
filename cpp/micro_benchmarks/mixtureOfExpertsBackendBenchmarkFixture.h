@@ -542,13 +542,14 @@ public:
     int mRoutingConfigIndex = 0;
 
     bool mUseBias = true;
+    bool mUseFusedFinalize = true;
     bool mUseFinalScale = true;
     bool mIsGated = false;
     int mGatedMultiplier = 1;
 
     ActivationType mActType = ActivationType::Relu;
 
-    constexpr static int64_t NUM_BUFFERS = 32;
+    constexpr static int64_t NUM_BUFFERS = 2;
 
     std::array<QuantParams, NUM_BUFFERS> mQuantParams{};
     bool mUseLora = false;
@@ -616,6 +617,8 @@ public:
         mExpertWeight2Size = need_weight_2 ? expert_matrix_size / WEIGHT_ELEM_PER_BYTE : 0;
         mExpertWeight1 = need_weight_1 ? allocBuffer<WeightStorage>(mExpertWeight1Size * NUM_BUFFERS) : nullptr;
         mExpertWeight2 = need_weight_2 ? allocBuffer<WeightStorage>(mExpertWeight2Size * NUM_BUFFERS) : nullptr;
+
+        mMoERunner.use_fused_finalize_ = mUseFusedFinalize;
 
         if (gemm_to_profile == GemmToProfile::LAYER)
         {
@@ -1026,12 +1029,13 @@ void MixtureOfExpertsBenchmark<TypeTuple_>::runBenchmark(benchmark::State& state
     int const world_rank = state.range(6);
     int const num_tokens = state.range(7);
     mUseBias = state.range(8);
-    mUseFinalScale = state.range(9);
-    mActType = static_cast<ActivationType>(state.range(10));
-    int tactic_idx1 = state.range(11);
-    int tactic_idx2 = state.range(12);
-    int const routing_config = state.range(13);
-    GemmToProfile const gemm_to_profile = static_cast<GemmToProfile>(state.range(14));
+    mUseFusedFinalize = state.range(9);
+    mUseFinalScale = state.range(10);
+    mActType = static_cast<ActivationType>(state.range(11));
+    int tactic_idx1 = state.range(12);
+    int tactic_idx2 = state.range(13);
+    int const routing_config = state.range(14);
+    GemmToProfile const gemm_to_profile = static_cast<GemmToProfile>(state.range(15));
 
     state.counters["num_experts"] = num_experts;
     state.counters["top_k"] = top_k;
@@ -1042,6 +1046,7 @@ void MixtureOfExpertsBenchmark<TypeTuple_>::runBenchmark(benchmark::State& state
     state.counters["world_rank"] = world_rank;
     state.counters["num_tokens"] = num_tokens;
     state.counters["use_bias"] = (int) mUseBias;
+    state.counters["use_fused_finalize"] = (int) mUseFusedFinalize;
     state.counters["use_final_scale"] = (int) mUseFinalScale;
     state.counters["act_fn"] = (int) mActType;
     state.counters["routing_config"] = (int) routing_config;
@@ -1050,7 +1055,7 @@ void MixtureOfExpertsBenchmark<TypeTuple_>::runBenchmark(benchmark::State& state
     state.counters["gemm_to_profile"] = (int) gemm_to_profile;
 
     std::stringstream ss;
-    ss << "Experts,K,Hidden,Inter,TP,EP,Rank,Tokens,Bias,Scale,Actfn,Tactic1,Tactic2,Gemm,Routing=";
+    ss << "Experts,K,Hidden,Inter,TP,EP,Rank,Tokens,Bias,FusedFin,Scale,Actfn,Tactic1,Tactic2,Gemm,Routing=";
     for (auto v : {num_experts, top_k, hidden_size, inter_size, tp_size, ep_size, world_rank, num_tokens,
              (int) mUseBias, (int) mUseFinalScale, (int) mActType, tactic_idx1, tactic_idx2, (int) gemm_to_profile})
     {
